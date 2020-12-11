@@ -21,26 +21,27 @@ void clearResources(int signum);
 void  HPF() {
     //initializing some staff
     printf("HPF Scheduler Initialized\n");
+    bool firstIteration = 1;
     priority_heap_t *Q = (priority_heap_t*)calloc(1,sizeof(priority_heap_t));
-    printf("Priority Queue created\n");
-
-    //initializing the priority Q parameters
-    initializePQueue(Q);
-    printf("Priority Q initialized\n");
+    printf("Priority Queu created\n");
 
     //Beginning of the Sceduler logic
     while(1) {
+        //initializing the priority Q parameters
+        if(firstIteration) {
+            initializePQueue(Q);
+            printf("Priority Q initialized\n");
+            firstIteration = 0;
+        }
 
         //Creating a container for the recieved process
         struct Data recievedProcess;
         pData recievedData;
         //Recieving Processes that are in the Message Queue
-        int counter = 0; 
         while(1) {
-            printf("in the second while loop iteration number %d\n", counter++);
             size_t rcv = msgrcv(msgqid1, &recievedProcess, sizeof(recievedProcess), 0, IPC_NOWAIT);
             if (rcv == -1) {
-                //perror("Error in recieve message from process generator\n");
+                //perror("Error in recieve\n");
                 break;
             }
             else {
@@ -49,13 +50,14 @@ void  HPF() {
                 recievedData.pid = recievedProcess.id;
                 recievedData.priority = recievedProcess.priority;
                 recievedData.runtime = recievedProcess.runtime;
+                printf("\n %d %d\n",recievedData.arrival,recievedData.runtime );
+
                 //Forking  processes corresponding to the new Data recived
                 int cpid = fork();
                 if(cpid == -1) {
                     printf("Error in fork..\n");
                 }
                 else if(cpid == 0) {
-                    printf("in child\n");
                     //Passing the runtime to the child proccess
                     char buf[3];
                     sprintf(buf, "%d", recievedData.runtime);
@@ -64,19 +66,17 @@ void  HPF() {
                     execve(argv[0], &argv[0], NULL);
                 }
                 else {
-                    printf("in parent\n");
                     //Adding the new processes received to the ready Queue
                     recievedData.pid = cpid;
                     recievedData.isRunning = false;
                     push(Q, recievedData);
                     kill(cpid, SIGSTOP);
                     printf("Process %d is in ready state\n", cpid);
-                    //if the recieved process have a higher priority that the current running process stop the running process 
-                    //and add it again the processes queue 
-                    if (recievedData.priority > runningProcess.priority){
+                    if(recievedData.priority > runningProcess.priority && !available && !firstIteration){
                         kill(runningProcess.pid, SIGSTOP);
                         runningProcess.isRunning = false;
                         push(Q, runningProcess);
+                        printf("process %d has stopped because there is another one with higher priority arrived", runningProcess.pid);
                         available = true;
                     }
                 }
@@ -86,16 +86,16 @@ void  HPF() {
         if (Q->len != 0 && available == true) {
             runningProcess = pop(Q);
             runningProcess.isRunning = 1;
-            runningProcess.remainingT--;
-            runningProcess.runtime++;
-            printf("Process %d is now active\n", runningProcess.pid);
+            printf("Process %d is now active at time %d\n", runningProcess.pid, getClk());
             WaitTime = getClk() - runningProcess.arrival;
-            fprintf(logFilePtr, "At time %d process %d started arr %d remain %d wait %d\n",
-                    getClk(),runningProcess.pid, runningProcess.arrival, runningProcess.runtime, (runningProcess.arrival-getClk()));            
+            fprintf(logFilePtr, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %0.2f\n",
+                                getClk(),runningProcess.pid, runningProcess.arrival, runningProcess.runtime, 0, WaitTime, (getClk() - runningProcess.arrival) /*TA*/, (getClk() - runningProcess.arrival)/ runningProcess.runtime /*WTA*/); 
             kill(runningProcess.pid, SIGCONT);
             available = false;
         }
+
         sleep(1);
+
     }
     //upon termination release the clock resources
     destroyClk(true);

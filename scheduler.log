@@ -1,7 +1,14 @@
-At time 14 process 32449 finished arr 0 total 29 remain 0 wait 0 TA 14 WTA 0.00
-At time 14 process 32459 started arr 14 remain 11 wait 0
-At time 14 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 0 WTA 0.00
-At time 25 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 11 WTA 0.00
-At time 25 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 11 WTA 0.00
-At time 38 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 24 WTA 0.00
-At time 38 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 24 WTA 0.00
+At time 7 process 39011 finished arr 0 total 23 remain 0 wait 0 TA 7 WTA 0.00
+At time 7 process 39020 started arr 7 remain 23 wait 0
+At time 7 process 39020 finished arr 7 total 23 remain 0 wait 0 TA 0 WTA 0.00
+At time 16 process 39020 finished arr 7 total 23 remain 0 wait 0 TA 9 WTA 0.00
+At time 16 process 39042 finished arr 7 total 13 remain 0 wait 0 TA 9 WTA 0.00
+At time 26 process 39060 finished arr 7 total 2 remain 0 wait 0 TA 19 WTA 0.00
+At time 27 process 39060 finished arr 7 total 2 remain 0 wait 0 TA 20 WTA 0.00
+At time 27 process 39060 finished arr 7 total 2 remain 0 wait 0 TA 20 WTA 0.00
+At time 29 process 39064 finished arr 7 total 11 remain 0 wait 0 TA 22 WTA 0.00
+At time 29 process 39064 finished arr 7 total 11 remain 0 wait 0 TA 22 WTA 0.00
+At time 30 process 39064 finished arr 7 total 11 remain 0 wait 0 TA 23 WTA 0.00
+At time 30 process 39064 finished arr 7 total 11 remain 0 wait 0 TA 23 WTA 0.00
+At time 39 process 39064 finished arr 7 total 11 remain 0 wait 0 TA 32 WTA 0.00
+At time 39 process 39064 finished arr 7 total 11 remain 0 wait 0 TA 32 WTA 0.00
