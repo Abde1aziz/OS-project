@@ -44,13 +44,13 @@ int main(int argc, char *argv[])
 
     #pragma region Asking the user for scheduling algorithm and parameters
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
-    printf("Please, Choose the scheduling algorithm\na. Non-preemptive Highest Priority First (HPF).\nb. Shortest Remaining time Next (SRTN).\nc. Round Robin (RR).\n");
+    printf("Please, Choose the scheduling algorithm\na. Preemptive Highest Priority First (HPF).\nb. Shortest Remaining time Next (SRTN).\nc. Round Robin (RR).\nd.Shortest Job First (SJF).");
     char alogrithmType;
     int RoundRobin = 0;
     char RoundRobinChars[5];
     fscanf(stdin, "%c", &alogrithmType);
 
-    if (alogrithmType == 'c')
+    if (alogrithmType == 'c' || alogrithmType == 'C')
     {
         printf("Please, choose the Quanta of the Round Robin Algorithm\n");
         fscanf(stdin, "%d", &RoundRobin);

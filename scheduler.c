@@ -7,7 +7,7 @@ struct Node *head;
 struct Node *pointer1;
 struct Node *pointer2;
 int flag;
-FILE *fp;
+FILE *fp; // output file variable
 char dummy[2000];
 char out[100000];
 int pid_of_currnet_process;
@@ -77,14 +77,15 @@ int main(int argc, char *argv[])
     int myInt = 5;
     fp = fopen("Output.txt", "w"); // "w" means that we are going to write on this file
                                    //Don't forget to close the file when finished
-    // signal(SIGCONT,Continue);
     signal(SIGINT, cleanup);
 
     int pid_childs;
     int pid_finished;
     printf("Schudler iniatiated\n");
     initClk();
-    if (*argv[1] == 'a') // Non pre-emptive priority
+    #pragma region Preemptive Highest Priority First (HPF)
+
+    if (*argv[1] == 'a' || *argv[1] == 'A') // Non pre-emptive priority
     {
 
         printf("Non preemptive HPF is in action\n");
@@ -166,7 +167,12 @@ int main(int argc, char *argv[])
             }
         }
     }
-    else if (*argv[1] == 'b')
+
+    #pragma endregion
+
+    #pragma region Shortest Remaining Time Next (SRTN)
+
+    else if (*argv[1] == 'b' || *argv[1] == 'B')
     {
 
         printf("Shortest Remaining Time Next is in action \n");
@@ -275,7 +281,12 @@ int main(int argc, char *argv[])
             }
         }
     }
-    else
+    
+    #pragma endregion
+
+    #pragma region Round Robin (RR)
+
+    else if (*argv[1] == 'c' || *argv[1] == 'C' )
     {
         printf("Round Robin in action\n");
         /////////////////////////////////////////////////////////////////
@@ -472,6 +483,16 @@ int main(int argc, char *argv[])
             }
         }
     }
+
+    #pragma endregion
+    
+    #pragma region Shortest Job First (SJF).
+
+    else{
+
+    }
+
+    #pragma endregion
 
     // destroyClk(true);
 }
