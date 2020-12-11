@@ -1,4 +1,7 @@
 #include "headers.h"
+
+#pragma region Glabal varaibles
+
 heap_t *proccessTable;
 struct Node *head;
 struct Node *pointer1;
@@ -8,15 +11,21 @@ FILE *fp;
 char dummy[2000];
 char out[100000];
 int pid_of_currnet_process;
+
+#pragma endregion
+
+#pragma region Signal handlers
+
+//SIGNINT handler
 void cleanup(int signum)
 {
-
     printf("Schedule terminating!\n");
     printf("%s\n", out);
     fclose(fp);
     destroyClk(true);
     exit(0);
 }
+
 void child_handler(int signum)
 {
     if (proccessTable->nodes[1].data->remainingTime == proccessTable->nodes[1].data->runningtime)
@@ -58,6 +67,10 @@ void child_handler_Round_Robin(int signum)
         printf("stoped %d\n", pointer1->data->pid);
     }*/
 }
+
+#pragma endregion
+
+#pragma region Main function
 int main(int argc, char *argv[])
 {
     FILE *fp;
@@ -462,3 +475,4 @@ int main(int argc, char *argv[])
 
     // destroyClk(true);
 }
+#pragma endregion

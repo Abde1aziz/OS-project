@@ -65,7 +65,7 @@ void destroyClk(bool terminateAll)
 }
 
 ///////////////
-//// Struct that will be used inside the queue in the procces genrator
+//// Struct that will be used inside the queue in the procces genrator to store data about the process
 struct processData
 {
     int arrivaltime;
@@ -80,7 +80,7 @@ struct processData
 //// Struct that will be used inside the scheduler
 
 //////////////////////////////////////
-//Queue From Geeks for Geeks
+//*Queue From Geeks for Geeks
 
 // A linked list (LL) node to store a queue entry
 struct QNode
@@ -96,7 +96,7 @@ struct Queue
     struct QNode *front, *rear;
 };
 
-// A utility function to create a new linked list node.
+// An utility function to create a new linked list node.
 struct QNode *newNode(struct processData k)
 {
 
@@ -118,7 +118,7 @@ struct Queue *createQueue()
     return q;
 }
 
-// The function to add a key k to q
+// The function to add a key k to a queue q
 void enQueue(struct Queue *q, struct processData k)
 {
     // Create a new LL node

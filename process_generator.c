@@ -1,21 +1,24 @@
 #include "headers.h"
 
+//SINGINT handler
 void clearResources(int);
 
-int msgid;
-int pid;
-int pid2;
+#pragma region Global varaibles
+
+int messageID; //the ID of the queue IPC
+int pid; // process id for the clock
+int pid2; // process id for the schduler
+
+#pragma endregion
+
 int main(int argc, char *argv[])
 {
     signal(SIGINT, clearResources);
 
-    //////////////////////////////////////////////////////////////////
 
-    //////////////////////////////////////////////////////////////
+    #pragma region Reading the file and populating the queue of processes
 
-    //Reading the file and populating the queue of processes
-
-    struct processData D;                          //Dummy variable for data transfer
+    struct processData dummyProcessData;            //Dummy variable to store the process data
     struct Queue *processes_queue = createQueue(); // creating a queue for saving the info of the procceses
 
     FILE *in_file = fopen("test.txt", "r"); // read only
@@ -26,20 +29,20 @@ int main(int argc, char *argv[])
         exit(-1); // must include stdlib.h
     }
 
-    int a, b, c, d; // Dummy variables for data transfer
-    while (fscanf(in_file, "%d\t%d\t%d\t%d", &a, &b, &c, &d) != EOF)
+    int a, b, c, d; // Dummy variables for to read the values from the file 
+                    //where a => id, b => arrival time, c => running time, and d =>priority
+    while (fscanf(in_file, "%d\t%d\t%d\t%d", &a, &b, &c, &d) != EOF) //populating the variables from the file and assigning them to a, b, c, and d
     {
-        D.id = a;
-        D.arrivaltime = b;
-        D.runningtime = c;
-        D.priority = d;
-        enQueue(processes_queue, D);
+        dummyProcessData.id = a;
+        dummyProcessData.arrivaltime = b;
+        dummyProcessData.runningtime = c;
+        dummyProcessData.priority = d;
+        enQueue(processes_queue, dummyProcessData);
     }
-    //////////////////////////////////////////////////////////////////
 
-    //////////////////////////////////////////////////////////////
+    #pragma endregion 
 
-    /////////////////////////////////////
+    #pragma region Asking the user for scheduling algorithm and parameters
     // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
     printf("Please, Choose the scheduling algorithm\na. Non-preemptive Highest Priority First (HPF).\nb. Shortest Remaining time Next (SRTN).\nc. Round Robin (RR).\n");
     char alogrithmType;
@@ -54,12 +57,9 @@ int main(int argc, char *argv[])
         sprintf(RoundRobinChars, "%d", RoundRobin);
     }
 
-    //////////////////////////////////////////////////////////////////
-
-    //////////////////////////////////////////////////////////////
-
-    /////////////////////////
-    //// 3. Initiate and create the scheduler and clock processes.
+    #pragma endregion
+    
+    #pragma region Initiate and create the scheduler and clock processes.
     pid = fork();
 
     if (pid == -1)
@@ -84,27 +84,27 @@ int main(int argc, char *argv[])
         }
         else
         {
-
+            #pragma region Process Generator logic
             //////////////////////////////////////////////////////////////////
             //Back to process Genrator
             //////////////////////////////////////////////////////////////
 
-            /////// 4. initialize clock
+            /////// initialize clock
             initClk();
 
             int Current_time = getClk();
 
             ////////////////////////////
-            // // 5. Send the information to the scheduler at the appropriate time.
+            // //  Send the information to the scheduler at the appropriate time.
             // This is down by a messeage queue created by the process genrator
 
             /////////////////////////////////////////////////////////////////////////
             /// Generating a unquie Key for the queue
-            msgid = msgget(1, 0666 | IPC_CREAT);
+            messageID = msgget(1, 0666 | IPC_CREAT); //create a message queue
             key_t msgqid;
             int send_val;
             struct Gen_to_Sch message_processDate; //message to be sent from the Genrator
-            //                                       to the Scheduler
+                                                    //to the Scheduler
             /////////////////////////////////////////////////////////////////////////
             struct QNode *N; //pointer to the node to be sent
             // The node contains a struct that carry info about the process
@@ -116,6 +116,7 @@ int main(int argc, char *argv[])
 
             while (processes_queue->front != NULL)
             {
+                #pragma region Sending process data via messaga IPC
                 /////////////////////////////////////////////////////////////////////////
                 //Calculating the sleep time of the process genrator
                 // geting the time of the next process to be sent form the queue of prceeses
@@ -137,13 +138,14 @@ int main(int argc, char *argv[])
                 message_processDate.ProcessData.waitingTime = 0;
                 /// Sending the message
                 deQueue(processes_queue);
-                int send_val = msgsnd(msgid, &message_processDate, sizeof(message_processDate.ProcessData), !IPC_NOWAIT);
+                int send_val = msgsnd(messageID, &message_processDate, sizeof(message_processDate.ProcessData), !IPC_NOWAIT);
                 if (send_val == -1)
                     printf("Errror in send at %d", getClk());
                 else
                 {
                     ///printf("message sent at %d\n ", getClk());
                 }
+                #pragma endregion
             }
             printf("Process genrator waiting\n");
             
@@ -153,14 +155,17 @@ int main(int argc, char *argv[])
             printf("Process genrator stoped waiting\n");
             // 7. Clear clock resources
             destroyClk(true);
+            #pragma endregion
         }
     }
+    #pragma endregion
 }
-
+ 
+//SIGNINT handler
 void clearResources(int signum)
 {
      destroyClk(true);
-    msgctl(msgid, IPC_RMID, NULL);
+    msgctl(messageID, IPC_RMID, NULL);
     kill(pid,SIGINT);
     kill(pid2,SIGINT);
     destroyClk(true);
