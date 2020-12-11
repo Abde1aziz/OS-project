@@ -3,21 +3,22 @@
 /* Modify this file as needed*/
 int remainingtime;
 
-int main(int argc, char *argv[])
+int main(int agrc, char * argv[])
 {
     initClk();
+    int remainingtime = atoi(argv[1]);
+    printf("process runtime is %d\n", remainingtime);
 
-
-int runningTime= atoi(argv[1]);
-remainingtime=runningTime;
-printf("Hi I am process %d, My running time is %d, time now is %d\n ",getpid(),runningTime,getClk());
-    
     while (remainingtime > 0)
     {
-       remainingtime = runningTime- (int)clock()/CLOCKS_PER_SEC;
+        sleep(1);
+        remainingtime--;
     }
-    printf("Hi I am process %d, Iam done at %d\n",getpid(),getClk());
+
+    printf("Process %d has finished at time %d\n", getpid(), getClk());
+
+    kill(getppid(), SIGCHLD);
     destroyClk(false);
-    
+
     return 0;
 }

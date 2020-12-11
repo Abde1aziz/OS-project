@@ -1,0 +1,7 @@
+At time 14 process 32449 finished arr 0 total 29 remain 0 wait 0 TA 14 WTA 0.00
+At time 14 process 32459 started arr 14 remain 11 wait 0
+At time 14 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 0 WTA 0.00
+At time 25 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 11 WTA 0.00
+At time 25 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 11 WTA 0.00
+At time 38 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 24 WTA 0.00
+At time 38 process 32459 finished arr 14 total 11 remain 0 wait 0 TA 24 WTA 0.00

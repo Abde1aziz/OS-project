@@ -1,499 +1,482 @@
+
 #include "headers.h"
+#include "queue.h"
+#include "priority_queue.h"
+#include <string.h>
 
-#pragma region Glabal varaibles
 
-heap_t *proccessTable;
-struct Node *head;
-struct Node *pointer1;
-struct Node *pointer2;
-int flag;
-FILE *fp; // output file variable
-char dummy[2000];
-char out[100000];
-int pid_of_currnet_process;
+pid_t pid;
+key_t msgqid1;
+//key_t msgqid2;
+FILE * logFilePtr;
+bool available = true;
+pData runningProcess;
+pData currentProc;
+int WaitTime;
+int numberOfFinishedProcesses = 0;
 
-#pragma endregion
+void hpfHandler(int signum);
+void clearResources(int signum);
 
-#pragma region Signal handlers
+void  HPF() {
+    //initializing some staff
+    printf("HPF Scheduler Initialized\n");
+    priority_heap_t *Q = (priority_heap_t*)calloc(1,sizeof(priority_heap_t));
+    printf("Priority Queue created\n");
 
-//SIGNINT handler
-void cleanup(int signum)
-{
-    printf("Schedule terminating!\n");
-    printf("%s\n", out);
-    fclose(fp);
+    //initializing the priority Q parameters
+    initializePQueue(Q);
+    printf("Priority Q initialized\n");
+
+    //Beginning of the Sceduler logic
+    while(1) {
+
+        //Creating a container for the recieved process
+        struct Data recievedProcess;
+        pData recievedData;
+        //Recieving Processes that are in the Message Queue
+        int counter = 0; 
+        while(1) {
+            printf("in the second while loop iteration number %d\n", counter++);
+            size_t rcv = msgrcv(msgqid1, &recievedProcess, sizeof(recievedProcess), 0, IPC_NOWAIT);
+            if (rcv == -1) {
+                //perror("Error in recieve message from process generator\n");
+                break;
+            }
+            else {
+                printf("Message Recieved\n");
+                recievedData.arrival = recievedProcess.arrival;
+                recievedData.pid = recievedProcess.id;
+                recievedData.priority = recievedProcess.priority;
+                recievedData.runtime = recievedProcess.runtime;
+                //Forking  processes corresponding to the new Data recived
+                int cpid = fork();
+                if(cpid == -1) {
+                    printf("Error in fork..\n");
+                }
+                else if(cpid == 0) {
+                    printf("in child\n");
+                    //Passing the runtime to the child proccess
+                    char buf[3];
+                    sprintf(buf, "%d", recievedData.runtime);
+                    char *argv[] = { "./process.out", buf, 0};
+                    printf("process %d forked\n", getpid());
+                    execve(argv[0], &argv[0], NULL);
+                }
+                else {
+                    printf("in parent\n");
+                    //Adding the new processes received to the ready Queue
+                    recievedData.pid = cpid;
+                    recievedData.isRunning = false;
+                    push(Q, recievedData);
+                    kill(cpid, SIGSTOP);
+                    printf("Process %d is in ready state\n", cpid);
+                    //if the recieved process have a higher priority that the current running process stop the running process 
+                    //and add it again the processes queue 
+                    if (recievedData.priority > runningProcess.priority){
+                        kill(runningProcess.pid, SIGSTOP);
+                        runningProcess.isRunning = false;
+                        push(Q, runningProcess);
+                        available = true;
+                    }
+                }
+            }
+        }
+        //If the processor is not busy and there is ready processes set the appropriate process to active
+        if (Q->len != 0 && available == true) {
+            runningProcess = pop(Q);
+            runningProcess.isRunning = 1;
+            runningProcess.remainingT--;
+            runningProcess.runtime++;
+            printf("Process %d is now active\n", runningProcess.pid);
+            WaitTime = getClk() - runningProcess.arrival;
+            fprintf(logFilePtr, "At time %d process %d started arr %d remain %d wait %d\n",
+                    getClk(),runningProcess.pid, runningProcess.arrival, runningProcess.runtime, (runningProcess.arrival-getClk()));            
+            kill(runningProcess.pid, SIGCONT);
+            available = false;
+        }
+        sleep(1);
+    }
+    //upon termination release the clock resources
     destroyClk(true);
+}
+
+void SRTN(){
+    printf("entered SRTN algorithm\n" );
+    bool firstIteration = 1;
+    long processInterTime;
+    priority_heap_t *Q = (priority_heap_t*)calloc(1,sizeof(priority_heap_t));
+    printf("Priority Queu created\n");
+    while(1){
+        if(firstIteration){
+            initializePQueue(Q);
+            printf("Priority Q initialized\n");
+            pid = getpid();
+            firstIteration = 0;
+        }
+        struct Data recievedProcess;
+        pData recievedData;
+        //Recieving Processes that are in the Message Queue
+        while(1){
+            size_t rcv = msgrcv(msgqid1, &recievedProcess, sizeof(recievedProcess), 0, IPC_NOWAIT);
+            if (rcv == -1) {
+                // //perror("Error in recieve\n");
+                // break;
+            }
+            else {
+                printf("Message Recieved\n");
+                recievedData.arrival = recievedProcess.arrival;
+                recievedData.pid = recievedProcess.id;
+                recievedData.priority = recievedProcess.priority;
+                recievedData.runtime = recievedProcess.runtime;
+                //fork a process for the comming data
+                printf("\n %d %d\n",recievedData.arrival,recievedData.runtime );
+                int cpid = fork();
+                if(cpid == -1) {
+                    printf("Error in fork..\n");
+                }
+                else if(cpid == 0) {
+                char buf[3];
+                // itoa(currentProcessData.runtime, buf, 10);
+                sprintf(buf, "%d", recievedData.runtime);
+                char *argv[] = { "./process.out", buf, 0};
+                execve(argv[0], &argv[0], NULL);
+                }
+                else {
+                    recievedData.pid = cpid;
+                    recievedData.isRunning = false;
+                     //push(Q, recievedData);
+                    printf("Process added %d to Q\n", cpid);
+                    kill(cpid, SIGSTOP);
+                    printf("Process %d is in ready state\n", cpid);
+
+                    if (available == true)
+                    {
+                        printf("there was no processes running so this process started\n" );
+                        runningProcess.pid = recievedData.pid;
+                        runningProcess.runtime = recievedData.runtime;
+                        //  printf("\n data id %d\n",cpid );
+                        runningProcess.isRunning = 1;
+                        available = false;
+                        processInterTime = getClk();
+                        printf("process inter time %d\n",processInterTime);
+                        kill(runningProcess.pid,SIGCONT);
+                    }
+                    else {
+                        //if there is no process running run the current one
+                        //calculate the time passed in the currentProc
+                        runningProcess.remainingT = runningProcess.runtime - clock()/CLOCKS_PER_SEC;
+                        //if it is there one running compare between the running time
+                        printf("runningProcess.remainingT %d\n",runningProcess.remainingT );
+                        if(recievedData.remainingT < runningProcess.remainingT )
+                        {
+                            kill(runningProcess.pid,SIGSTOP);
+
+                            //kill(recievedData.id,SIGCONT); //it is already running
+                            //reaProc = insertSorted(reaProc,currentProc);
+                            runningProcess.priority = runningProcess.remainingT;
+                            push(Q,runningProcess);
+                            // it will be more effiecient if you write copy constructor
+                            runningProcess.pid = recievedData.pid;
+                            runningProcess.arrival = recievedData.arrival;
+                            runningProcess.priority = recievedData.priority;
+                            runningProcess.remainingT = recievedData.remainingT;
+                            runningProcess.runtime = recievedData.runtime;
+                            processInterTime = getClk();
+                            kill(recievedData.pid,SIGCONT);
+                        }
+                        else
+                        {
+                    // use insert sorted to insert the one you want in the ready queue
+                    //reaProc = insertSorted(reaProc,recievedData);
+                            recievedData.priority = recievedData.runtime;
+                            push(Q,recievedData);
+                        }
+                    }
+                } 
+            }
+
+            if (Q->len != 0 && available == true) {
+                printf("Condition is true\n");
+                runningProcess = pop(Q);
+                runningProcess.isRunning = 1;
+                printf("Process %d is now active\n", runningProcess.pid);
+                fprintf(logFilePtr, "At time %d process %d started arr %d remain %d wait %d\n",
+                    getClk(),runningProcess.pid, runningProcess.arrival, runningProcess.runtime, (runningProcess.arrival-getClk()));
+                kill(runningProcess.pid, SIGCONT);
+                available = false;
+            }
+        }   
+        sleep(1); 
+    }    
+    destroyClk(true);
+}    
+
+ pData recv_msg_process(key_t msgqid)
+{
+    int recv_val;
+     pData processData;
+
+    // receive all messages
+    recv_val = msgrcv(msgqid, &processData, sizeof(processData), 0, !IPC_NOWAIT);
+
+    if (recv_val == -1)
+    {
+        perror("Error in receive, bad data returned");
+        return processData;
+    }
+    else
+    {
+        printf("\nProcess Data received\n");
+        return processData;
+    }
+}
+
+// void RR(){
+
+//         printf("Round Robin in action\n");
+//         /////////////////////////////////////////////////////////////////
+//         //////// receive the messeage
+//         //signal(SIGCHLD, child_handler_Round_Robin);
+//         struct Gen_to_Sch message;
+//         int msgid;
+//         msgid = msgget(1, 0666);
+//         char remaining_char[7];
+//         int Qunata = atoi(argv[2]);
+//         printf("Quanta %d\n", Qunata);
+//         // msgrcv to receive message
+//         struct processData *temp;
+//         head = NULL;
+//         flag = 1;
+//         pointer1 = head;
+//         while (1)
+//         {
+//             int rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
+//             // checking of the message recived
+//             if (rcvTag != -1)
+//             {
+//                 ///// There are processes at the message queue, so inserting them in the priority queue
+//                 ////// DO Stuff to to insert them in the priority queue
+//                 pid_childs = fork();
+//                 if (pid_childs == -1)
+//                     printf("error in forking Processes");
+
+//                 else if (pid_childs == 0)
+//                 {
+//                     char remaining_char[7];
+
+//                     sprintf(remaining_char, "%d", message.ProcessData.runningtime);
+
+//                     char *argv[] = {"./process.out", remaining_char, 0};
+//                     execve(argv[0], &argv[0], NULL); //// forking the processes
+//                 }
+//                 else
+//                 {
+//                     message.ProcessData.pid = pid_childs;
+//                     kill(pid_childs, SIGSTOP);
+//                     //printf("process with %d recived at %d with running time %d \n  ", pid_childs,getClk(),message.ProcessData.runningtime);
+//                     temp = (struct processData *)malloc(sizeof(struct processData));
+//                     temp->arrivaltime = message.ProcessData.arrivaltime;
+//                     temp->remainingTime = message.ProcessData.remainingTime;
+//                     temp->waitingTime = message.ProcessData.waitingTime;
+//                     temp->priority = message.ProcessData.priority;
+//                     temp->pid = message.ProcessData.pid;
+//                     temp->id = message.ProcessData.id;
+//                     temp->runningtime = message.ProcessData.runningtime;
+//                     printf("insersting %d \n", temp->pid);
+//                     if (head == NULL)
+//                     {
+//                         push_(&head, *temp);
+//                         pointer1 = head;
+//                         printList(head);
+//                     }
+//                     else
+//                     {
+//                         insertAfter(pointer1, *temp);
+//                         if (pointer1->next == NULL)
+//                             printf("Next is NULL\n");
+//                         printList(head);
+//                     }
+//                     continue;
+//                 }
+//             }
+//             else
+//             {
+
+//                 if (head == NULL)
+//                 {
+//                     printf(" No processes scheduler is sleeping\n");
+//                     sleep(1);
+//                 }
+//                 else
+//                 {
+//                     //printf("remaining time = %d\n", pointer1->data.remainingTime);
+//                     if (pointer1->data.remainingTime > Qunata)
+//                     {
+//                         pointer1->data.remainingTime = pointer1->data.remainingTime - Qunata;
+                            
+//                         for (int i = 0; i < Qunata; i++)
+//                         {
+//                             printf("here more\n");
+//                             kill(pointer1->data.pid, SIGCONT);
+//                             sleep(1);
+//                             kill(pointer1->data.pid, SIGSTOP);
+
+//                             rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
+//                             // checking of the message recived
+//                             if (rcvTag != -1)
+//                             {
+//                                 ///// There are processes at the message queue, so inserting them in the priority queue
+//                                 ////// DO Stuff to to insert them in the priority queue
+//                                 pid_childs = fork();
+//                                 if (pid_childs == -1)
+//                                     printf("error in forking Processes");
+
+//                                 else if (pid_childs == 0)
+//                                 {
+//                                     char remaining_char[7];
+
+//                                     sprintf(remaining_char, "%d", message.ProcessData.runningtime);
+
+//                                     char *argv[] = {"./process.out", remaining_char, 0};
+//                                     execve(argv[0], &argv[0], NULL); //// forking the processes
+//                                 }
+//                                 else
+//                                 {
+//                                     message.ProcessData.pid = pid_childs;
+//                                     kill(pid_childs, SIGSTOP);
+//                                     //printf("process with %d recived at %d with running time %d \n  ", pid_childs,getClk(),message.ProcessData.runningtime);
+//                                     temp = (struct processData *)malloc(sizeof(struct processData));
+//                                     temp->arrivaltime = message.ProcessData.arrivaltime;
+//                                     temp->remainingTime = message.ProcessData.remainingTime;
+//                                     temp->waitingTime = message.ProcessData.waitingTime;
+//                                     temp->priority = message.ProcessData.priority;
+//                                     temp->pid = message.ProcessData.pid;
+//                                     temp->id = message.ProcessData.id;
+//                                     temp->runningtime = message.ProcessData.runningtime;
+//                                     //printf("insersting %d \n", temp->pid);
+//                                     insertAfter(pointer1, *temp);
+//                                 }
+//                             }
+//                         }
+//                     }
+//                     else
+//                     {
+//                         for (int i = 0; i < /*Qunata -*/ pointer1->data.remainingTime; i++)
+//                         {
+//                             kill(pointer1->data.pid, SIGCONT);
+//                             sleep(1);
+//                             kill(pointer1->data.pid, SIGSTOP);
+
+//                             rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
+//                             // checking of the message recived
+//                             if (rcvTag != -1)
+//                             {
+//                                 ///// There are processes at the message queue, so inserting them in the priority queue
+//                                 //printf("process recived at %d \n  ", getClk());
+//                                    ////// DO Stuff to to insert them in the priority queue
+//                                 pid_childs = fork();
+//                                 if (pid_childs == -1)
+//                                     printf("error in forking Processes");
+
+//                                 else if (pid_childs == 0)
+//                                 {
+//                                     char remaining_char[7];
+
+//                                     sprintf(remaining_char, "%d", message.ProcessData.runningtime);
+
+//                                     char *argv[] = {"./process.out", remaining_char, 0};
+//                                     execve(argv[0], &argv[0], NULL); //// forking the processes
+//                                 }
+//                                 else
+//                                 {
+//                                     message.ProcessData.pid = pid_childs;
+//                                     kill(pid_childs, SIGSTOP);
+//                                     temp = (struct processData *)malloc(sizeof(struct processData));
+//                                     temp->arrivaltime = message.ProcessData.arrivaltime;
+//                                     temp->remainingTime = message.ProcessData.remainingTime;
+//                                     temp->waitingTime = message.ProcessData.waitingTime;
+//                                     temp->priority = message.ProcessData.priority;
+//                                     temp->pid = message.ProcessData.pid;
+//                                     temp->id = message.ProcessData.id;
+//                                     temp->runningtime = message.ProcessData.runningtime;
+//                                     insertAfter(pointer1, *temp);
+//                                 }
+//                             }
+//                             if (i ==Qunata -pointer1->data.remainingTime)
+//                             {
+//                                 kill(pointer1->data.pid, SIGCONT);
+//                                 wait(NULL);
+//                                 pointer2 = pointer1->next;
+//                                 flag = 0;
+//                                 deleteNode(&head, pointer1->data);
+//                                 pointer1 = pointer2;
+//                                 if (pointer1 == NULL)
+//                                     pointer1 = head;
+//                             }
+//                         }
+//                     }
+//                     if (flag)
+//                     {
+//                         pointer1 = pointer1->next;
+//                         if (pointer1 == NULL)
+//                         {
+//                             pointer1 = head;
+//                         }
+//                     }
+//                     flag = 1;
+//                 }
+//             }
+//         }
+// }
+
+void main(int argc, char * argv[])
+{
+    signal(SIGCHLD, hpfHandler);
+    signal(SIGINT,clearResources);
+    
+    initClk();
+    msgqid1 = msgget(16499, 0644);
+
+    logFilePtr = fopen("scheduler.log", "w");
+    if (logFilePtr == NULL)
+    {
+        printf("Unable to create log file for the scheduler ... \n");
+    }
+    
+
+    if (strcmp(argv[1], "-HPF") == 0){
+        printf("HPF Scheduler Initialized\n");
+        HPF();
+    }
+    else if (strcmp(argv[1], "-SRTN") == 0){
+        printf("SRTN Scheduler Initialized\n");
+        SRTN();
+    }
+    else if (strcmp(argv[1], "-RR") == 0){
+        printf("RR Scheduler Initialized\n");
+        // RR();
+    }
+    
+
+
+    // scheduler logic
+    
+    
+}
+void hpfHandler(int signum){
+    numberOfFinishedProcesses++;
+    // printf("Process %d has finished at time %d\n", runningProcess.pid, getClk());
+
+
+    fprintf(logFilePtr, "At time %d process %d finished arr %d total %d remain %d wait %d TA %d WTA %0.2f\n",
+    getClk(),runningProcess.pid, runningProcess.arrival, runningProcess.runtime, 0, WaitTime, (getClk() - runningProcess.arrival) /*TA*/, (getClk() - runningProcess.arrival)/ runningProcess.runtime /*WTA*/);
+    available = true;
+    signal(SIGCHLD, hpfHandler);
+}
+void clearResources(int signum){
+    msgctl(msgqid1, IPC_RMID, (struct msqid_ds *) 0);
+   // msgctl(msgqid2, IPC_RMID, (struct msqid_ds *) 0);
+    printf(" Interruption detected ... ");
     exit(0);
 }
-
-void child_handler(int signum)
-{
-    if (proccessTable->nodes[1].data->remainingTime == proccessTable->nodes[1].data->runningtime)
-        return;
-
-    if (proccessTable->nodes[1].data->remainingTime <= 0)
-    {
-        printf("popping %d\n", proccessTable->nodes[1].data->pid);
-        wait(NULL);
-        sprintf(dummy, "At time %d process %d finished arr %d total %d remain %d wait %d\n", getClk(), proccessTable->nodes[1].data->id, proccessTable->nodes[1].data->arrivaltime, proccessTable->nodes[1].data->runningtime, 0, getClk() - (proccessTable->nodes[1].data->arrivaltime) - (proccessTable->nodes[1].data->runningtime));
-        strcat(out, dummy);
-        //Finished*/
-        pop(proccessTable);
-        //pid_of_currnet_process = 0;
-    }
-    else
-    {
-
-        sprintf(dummy, "HI time %d process %d stopped arr %d total %d remain %d wait %d\n", getClk(), proccessTable->nodes[1].data->id, proccessTable->nodes[1].data->arrivaltime, proccessTable->nodes[1].data->runningtime, 0, getClk() - (proccessTable->nodes[1].data->arrivaltime) - (proccessTable->nodes[1].data->runningtime));
-        strcat(out, dummy);
-        //stoped
-    }
-}
-
-void child_handler_Round_Robin(int signum)
-{
-    /* if (pointer1->data->remainingTime <= 0)
-    {
-        printf("popping %d\n", pointer1->data->pid);
-        wait(NULL);
-        pointer2 = pointer1->next;
-        if (pointer2 == NULL)
-            pointer2 = head;
-        deleteNode(&head, pointer1);
-        pointer1 = pointer2;
-    }
-    else
-    {
-        printf("stoped %d\n", pointer1->data->pid);
-    }*/
-}
-
-#pragma endregion
-
-#pragma region Main function
-int main(int argc, char *argv[])
-{
-    FILE *fp;
-    int myInt = 5;
-    fp = fopen("Output.txt", "w"); // "w" means that we are going to write on this file
-                                   //Don't forget to close the file when finished
-    signal(SIGINT, cleanup);
-
-    int pid_childs;
-    int pid_finished;
-    printf("Schudler iniatiated\n");
-    initClk();
-    #pragma region Preemptive Highest Priority First (HPF)
-
-    if (*argv[1] == 'a' || *argv[1] == 'A') // Non pre-emptive priority
-    {
-
-        printf("Non preemptive HPF is in action\n");
-        proccessTable = (heap_t *)calloc(1, sizeof(heap_t));
-
-        /////////////////////////////////////////////////////////////////
-        //////// receive the messeage
-        struct Gen_to_Sch message;
-        int msgid;
-        msgid = msgget(1, 0666);
-        char remaining_char[7];
-        // msgrcv to receive message
-        struct processData *temp;
-        while (1)
-        {
-            int rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
-            // checking of the message recived
-            if (rcvTag == -1)
-            {
-                ///// No proceeses at the message queue
-                //printf("nothing at %d\n\n", getClk());
-                if (!proccessTable->len)
-                {
-                    printf(" No scheduler is sleeping\n");
-
-                    sleep(1);
-                }
-                else
-                {
-                    printf("%d\n", proccessTable->nodes[1].data->priority);
-                    if (kill(proccessTable->nodes[1].data->pid, SIGCONT) == 0)
-                    {
-                        int status;
-                        pid_finished = wait(&status);
-                        printf("process Finished\n");
-                        pop(proccessTable);
-                    }
-                    else
-                    {
-                        printf(" process in action scheduler is sleeping\n");
-                        sleep(1);
-                    }
-                }
-            }
-            else
-            {
-                //// There are processes at the message queue, so inserting them in the priority queue
-                //printf("process recived at %d \n  ", getClk());
-                ////// DO Stuff to to insert them in the priority queue
-                pid_childs = fork();
-                if (pid_childs == -1)
-                    printf("error in forking Processes");
-
-                else if (pid_childs == 0)
-                {
-                    char remaining_char[7];
-
-                    sprintf(remaining_char, "%d", message.ProcessData.runningtime);
-
-                    char *argv[] = {"./process.out", remaining_char, 0};
-                    execve(argv[0], &argv[0], NULL); //// forking the processes
-                }
-                else
-                {
-                    message.ProcessData.pid = pid_childs;
-                    kill(pid_childs, SIGSTOP);
-                    temp = (struct processData *)malloc(sizeof(struct processData));
-                    temp->arrivaltime = message.ProcessData.arrivaltime;
-                    temp->remainingTime = message.ProcessData.remainingTime;
-                    temp->waitingTime = message.ProcessData.waitingTime;
-                    temp->priority = message.ProcessData.priority;
-                    temp->pid = message.ProcessData.pid;
-                    temp->id = message.ProcessData.id;
-                    temp->runningtime = message.ProcessData.runningtime;
-                    push(proccessTable, message.ProcessData.priority, temp);
-                    printf("highest Priority is %d\n", proccessTable->nodes[1].priority);
-                    continue;
-                }
-            }
-        }
-    }
-
-    #pragma endregion
-
-    #pragma region Shortest Remaining Time Next (SRTN)
-
-    else if (*argv[1] == 'b' || *argv[1] == 'B')
-    {
-
-        printf("Shortest Remaining Time Next is in action \n");
-        proccessTable = (heap_t *)calloc(1, sizeof(heap_t));
-
-        /////////////////////////////////////////////////////////////////
-        //////// receive the messeage
-        struct Gen_to_Sch message;
-        int msgid;
-        msgid = msgget(1, 0666);
-        char remaining_char[7];
-        // msgrcv to receive message
-        struct processData *temp;
-        /////
-        pid_of_currnet_process = 0;
-        while (1)
-        {
-            int rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
-            // checking of the message recived
-            if (rcvTag == -1)
-            {
-                ///// No proceeses at the message queue
-                //printf("nothing at %d\n\n", getClk());
-                if (!proccessTable->len)
-                {
-                    printf(" No scheduler is sleeping\n");
-
-                    sleep(1);
-                }
-                else
-                {
-
-                    signal(SIGCHLD, child_handler);
-
-                    if (proccessTable->nodes[1].data->pid == pid_of_currnet_process)
-                    {
-                        printf("remaining %d\n", proccessTable->nodes[1].data->pid);
-                        sleep(1);
-                        proccessTable->nodes[1].data->remainingTime = proccessTable->nodes[1].data->remainingTime - 1;
-                        proccessTable->nodes[1].priority = proccessTable->nodes[1].priority - 1;
-                    }
-                    else if (pid_of_currnet_process == 0)
-                    {
-                        pid_of_currnet_process = proccessTable->nodes[1].data->pid;
-                        sprintf(dummy, "At time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), proccessTable->nodes[1].data->id, proccessTable->nodes[1].data->arrivaltime, proccessTable->nodes[1].data->runningtime, 0, getClk() - (proccessTable->nodes[1].data->arrivaltime) - (proccessTable->nodes[1].data->runningtime));
-                        strcat(out, dummy);
-                        kill(pid_of_currnet_process, SIGCONT);
-                        printf("started %d\n", proccessTable->nodes[1].data->pid);
-                        sleep(1);
-                        proccessTable->nodes[1].data->remainingTime = proccessTable->nodes[1].data->remainingTime - 1;
-                        proccessTable->nodes[1].priority = proccessTable->nodes[1].priority - 1;
-                    }
-                    else
-                    {
-
-                        kill(pid_of_currnet_process, SIGSTOP);
-                        signal(SIGCHLD, child_handler);
-                        pid_of_currnet_process = proccessTable->nodes[1].data->pid;
-                        kill(pid_of_currnet_process, SIGCONT);
-                        sprintf(dummy, "At time %d process %d started arr %d total %d remain %d wait %d\n", getClk(), proccessTable->nodes[1].data->id, proccessTable->nodes[1].data->arrivaltime, proccessTable->nodes[1].data->runningtime, 0, getClk() - (proccessTable->nodes[1].data->arrivaltime) - (proccessTable->nodes[1].data->runningtime));
-                        strcat(out, dummy);
-                        sleep(1);
-                        proccessTable->nodes[1].data->remainingTime = proccessTable->nodes[1].data->remainingTime - 1;
-                        proccessTable->nodes[1].priority = proccessTable->nodes[1].priority - 1;
-                    }
-                }
-            }
-            else
-            {
-                //// There are processes at the message queue, so inserting them in the priority queue
-                //printf("process recived at %d \n  ", getClk());
-                ////// DO Stuff to to insert them in the priority queue
-                pid_childs = fork();
-                if (pid_childs == -1)
-                    printf("error in forking Processes");
-
-                else if (pid_childs == 0)
-                {
-                    char remaining_char[7];
-
-                    sprintf(remaining_char, "%d", message.ProcessData.runningtime);
-
-                    char *argv[] = {"./process.out", remaining_char, 0};
-                    execve(argv[0], &argv[0], NULL); //// forking the processes
-                }
-                else
-                {
-                    message.ProcessData.pid = pid_childs;
-                    signal(SIGCHLD, SIG_IGN);
-                    kill(pid_childs, SIGSTOP);
-                      signal(SIGCHLD, child_handler);
-
-                    //printf("process with %d recived at %d with running time %d \n  ", pid_childs,getClk(),message.ProcessData.runningtime);
-                    temp = (struct processData *)malloc(sizeof(struct processData));
-                    temp->arrivaltime = message.ProcessData.arrivaltime;
-                    temp->remainingTime = message.ProcessData.remainingTime;
-                    temp->waitingTime = message.ProcessData.waitingTime;
-                    temp->priority = message.ProcessData.priority;
-                    temp->pid = message.ProcessData.pid;
-                    temp->id = message.ProcessData.id;
-                    temp->runningtime = message.ProcessData.runningtime;
-                    push(proccessTable, message.ProcessData.remainingTime, temp);
-                    printf("%d highest Priority is %d\n", proccessTable->nodes[1].data->pid, proccessTable->nodes[1].data->priority);
-                    continue;
-                }
-            }
-        }
-    }
-    
-    #pragma endregion
-
-    #pragma region Round Robin (RR)
-
-    else if (*argv[1] == 'c' || *argv[1] == 'C' )
-    {
-        printf("Round Robin in action\n");
-        /////////////////////////////////////////////////////////////////
-        //////// receive the messeage
-        //signal(SIGCHLD, child_handler_Round_Robin);
-        struct Gen_to_Sch message;
-        int msgid;
-        msgid = msgget(1, 0666);
-        char remaining_char[7];
-        int Qunata = atoi(argv[2]);
-        printf("Quanta %d\n", Qunata);
-        // msgrcv to receive message
-        struct processData *temp;
-        head = NULL;
-        flag = 1;
-        pointer1 = head;
-        while (1)
-        {
-            int rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
-            // checking of the message recived
-            if (rcvTag != -1)
-            {
-                ///// There are processes at the message queue, so inserting them in the priority queue
-                ////// DO Stuff to to insert them in the priority queue
-                pid_childs = fork();
-                if (pid_childs == -1)
-                    printf("error in forking Processes");
-
-                else if (pid_childs == 0)
-                {
-                    char remaining_char[7];
-
-                    sprintf(remaining_char, "%d", message.ProcessData.runningtime);
-
-                    char *argv[] = {"./process.out", remaining_char, 0};
-                    execve(argv[0], &argv[0], NULL); //// forking the processes
-                }
-                else
-                {
-                    message.ProcessData.pid = pid_childs;
-                    kill(pid_childs, SIGSTOP);
-                    //printf("process with %d recived at %d with running time %d \n  ", pid_childs,getClk(),message.ProcessData.runningtime);
-                    temp = (struct processData *)malloc(sizeof(struct processData));
-                    temp->arrivaltime = message.ProcessData.arrivaltime;
-                    temp->remainingTime = message.ProcessData.remainingTime;
-                    temp->waitingTime = message.ProcessData.waitingTime;
-                    temp->priority = message.ProcessData.priority;
-                    temp->pid = message.ProcessData.pid;
-                    temp->id = message.ProcessData.id;
-                    temp->runningtime = message.ProcessData.runningtime;
-                    printf("insersting %d \n", temp->pid);
-                    if (head == NULL)
-                    {
-                        push_(&head, *temp);
-                        pointer1 = head;
-                        printList(head);
-                    }
-                    else
-                    {
-                        insertAfter(pointer1, *temp);
-                        if (pointer1->next == NULL)
-                            printf("Next is NULL\n");
-                        printList(head);
-                    }
-                    continue;
-                }
-            }
-            else
-            {
-
-                if (head == NULL)
-                {
-                    printf(" No processes scheduler is sleeping\n");
-                    sleep(1);
-                }
-                else
-                {
-                    //printf("remaining time = %d\n", pointer1->data.remainingTime);
-                    if (pointer1->data.remainingTime > Qunata)
-                    {
-                        pointer1->data.remainingTime = pointer1->data.remainingTime - Qunata;
-                            
-                        for (int i = 0; i < Qunata; i++)
-                        {
-                            printf("here more\n");
-                            kill(pointer1->data.pid, SIGCONT);
-                            sleep(1);
-                            kill(pointer1->data.pid, SIGSTOP);
-
-                            rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
-                            // checking of the message recived
-                            if (rcvTag != -1)
-                            {
-                                ///// There are processes at the message queue, so inserting them in the priority queue
-                                ////// DO Stuff to to insert them in the priority queue
-                                pid_childs = fork();
-                                if (pid_childs == -1)
-                                    printf("error in forking Processes");
-
-                                else if (pid_childs == 0)
-                                {
-                                    char remaining_char[7];
-
-                                    sprintf(remaining_char, "%d", message.ProcessData.runningtime);
-
-                                    char *argv[] = {"./process.out", remaining_char, 0};
-                                    execve(argv[0], &argv[0], NULL); //// forking the processes
-                                }
-                                else
-                                {
-                                    message.ProcessData.pid = pid_childs;
-                                    kill(pid_childs, SIGSTOP);
-                                    //printf("process with %d recived at %d with running time %d \n  ", pid_childs,getClk(),message.ProcessData.runningtime);
-                                    temp = (struct processData *)malloc(sizeof(struct processData));
-                                    temp->arrivaltime = message.ProcessData.arrivaltime;
-                                    temp->remainingTime = message.ProcessData.remainingTime;
-                                    temp->waitingTime = message.ProcessData.waitingTime;
-                                    temp->priority = message.ProcessData.priority;
-                                    temp->pid = message.ProcessData.pid;
-                                    temp->id = message.ProcessData.id;
-                                    temp->runningtime = message.ProcessData.runningtime;
-                                    //printf("insersting %d \n", temp->pid);
-                                    insertAfter(pointer1, *temp);
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        for (int i = 0; i < /*Qunata -*/ pointer1->data.remainingTime; i++)
-                        {
-                            kill(pointer1->data.pid, SIGCONT);
-                            sleep(1);
-                            kill(pointer1->data.pid, SIGSTOP);
-
-                            rcvTag = msgrcv(msgid, &message, sizeof(message), 0, IPC_NOWAIT);
-                            // checking of the message recived
-                            if (rcvTag != -1)
-                            {
-                                ///// There are processes at the message queue, so inserting them in the priority queue
-                                //printf("process recived at %d \n  ", getClk());
-                                   ////// DO Stuff to to insert them in the priority queue
-                                pid_childs = fork();
-                                if (pid_childs == -1)
-                                    printf("error in forking Processes");
-
-                                else if (pid_childs == 0)
-                                {
-                                    char remaining_char[7];
-
-                                    sprintf(remaining_char, "%d", message.ProcessData.runningtime);
-
-                                    char *argv[] = {"./process.out", remaining_char, 0};
-                                    execve(argv[0], &argv[0], NULL); //// forking the processes
-                                }
-                                else
-                                {
-                                    message.ProcessData.pid = pid_childs;
-                                    kill(pid_childs, SIGSTOP);
-                                    temp = (struct processData *)malloc(sizeof(struct processData));
-                                    temp->arrivaltime = message.ProcessData.arrivaltime;
-                                    temp->remainingTime = message.ProcessData.remainingTime;
-                                    temp->waitingTime = message.ProcessData.waitingTime;
-                                    temp->priority = message.ProcessData.priority;
-                                    temp->pid = message.ProcessData.pid;
-                                    temp->id = message.ProcessData.id;
-                                    temp->runningtime = message.ProcessData.runningtime;
-                                    insertAfter(pointer1, *temp);
-                                }
-                            }
-                            if (i ==Qunata -pointer1->data.remainingTime)
-                            {
-                                kill(pointer1->data.pid, SIGCONT);
-                                wait(NULL);
-                                pointer2 = pointer1->next;
-                                flag = 0;
-                                deleteNode(&head, pointer1->data);
-                                pointer1 = pointer2;
-                                if (pointer1 == NULL)
-                                    pointer1 = head;
-                            }
-                        }
-                    }
-                    if (flag)
-                    {
-                        pointer1 = pointer1->next;
-                        if (pointer1 == NULL)
-                        {
-                            pointer1 = head;
-                        }
-                    }
-                    flag = 1;
-                }
-            }
-        }
-    }
-
-    #pragma endregion
-    
-    #pragma region Shortest Job First (SJF).
-
-    else{
-
-    }
-
-    #pragma endregion
-
-    // destroyClk(true);
-}
-#pragma endregion

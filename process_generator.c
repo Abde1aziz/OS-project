@@ -1,175 +1,344 @@
 #include "headers.h"
+#include "queue.h"
+#define _GNU_SOURCE
 
-//SINGINT handler
-void clearResources(int);
+pid_t pid;
+key_t msgqid1;
 
-#pragma region Global varaibles
 
-int messageID; //the ID of the queue IPC
-int pid; // process id for the clock
-int pid2; // process id for the schduler
 
-#pragma endregion
+int processes_count;
+// int** processes_info;
 
-int main(int argc, char *argv[])
+void clearResources(int signum);
+
+// count lines in a file 
+int count_lines(FILE *fp)
 {
-    signal(SIGINT, clearResources);
-
-
-    #pragma region Reading the file and populating the queue of processes
-
-    struct processData dummyProcessData;            //Dummy variable to store the process data
-    struct Queue *processes_queue = createQueue(); // creating a queue for saving the info of the procceses
-
-    FILE *in_file = fopen("test.txt", "r"); // read only
-    // test for files not existing.
-    if (in_file == NULL)
-    {
-        printf("Error! Could not open file\n");
-        exit(-1); // must include stdlib.h
-    }
-
-    int a, b, c, d; // Dummy variables for to read the values from the file 
-                    //where a => id, b => arrival time, c => running time, and d =>priority
-    while (fscanf(in_file, "%d\t%d\t%d\t%d", &a, &b, &c, &d) != EOF) //populating the variables from the file and assigning them to a, b, c, and d
-    {
-        dummyProcessData.id = a;
-        dummyProcessData.arrivaltime = b;
-        dummyProcessData.runningtime = c;
-        dummyProcessData.priority = d;
-        enQueue(processes_queue, dummyProcessData);
-    }
-
-    #pragma endregion 
-
-    #pragma region Asking the user for scheduling algorithm and parameters
-    // 2. Ask the user for the chosen scheduling algorithm and its parameters, if there are any.
-    printf("Please, Choose the scheduling algorithm\na. Preemptive Highest Priority First (HPF).\nb. Shortest Remaining time Next (SRTN).\nc. Round Robin (RR).\nd.Shortest Job First (SJF).");
-    char alogrithmType;
-    int RoundRobin = 0;
-    char RoundRobinChars[5];
-    fscanf(stdin, "%c", &alogrithmType);
-
-    if (alogrithmType == 'c' || alogrithmType == 'C')
-    {
-        printf("Please, choose the Quanta of the Round Robin Algorithm\n");
-        fscanf(stdin, "%d", &RoundRobin);
-        sprintf(RoundRobinChars, "%d", RoundRobin);
-    }
-
-    #pragma endregion
+    int lines = 1;
+    char chr;
     
-    #pragma region Initiate and create the scheduler and clock processes.
-    pid = fork();
-
-    if (pid == -1)
-        perror("error in forking Clock");
-
-    else if (pid == 0)
+    chr = getc(fp);
+    while (chr != EOF)
     {
-        char *argv[] = {"./clock.o", 0};
-        execve(argv[0], &argv[0], NULL); //// forking the Clock
-    }
-    else
-    {
-
-        pid2 = fork();
-        if (pid2 == -1)
-            perror("error in forking Scheduler");
-
-        else if (pid2 == 0)
+        if (chr == '\n')
         {
-            char *argv[] = {"./scheduler.out", &alogrithmType, RoundRobinChars, 0};
-            execve(argv[0], &argv[0], NULL); //// forking the Scheduler
+            lines++;
+        }
+        
+        chr = getc(fp);
+    }
+    
+    fclose(fp);
+    return lines;
+}
+
+int** create_array(int m, int n)
+{
+    int* values = calloc(m*n, sizeof(float));
+    int** rows = malloc(n*sizeof(int*));
+    for (int i = 0; i < n; i++)
+    {
+        rows[i] = values + i*m;
+    }
+    return rows;
+}
+
+int** read_processes()
+{
+    // implement read file functionality here
+    FILE *fp1;
+    FILE *fp2;
+    ssize_t read;
+    size_t len;
+    char * line = NULL;
+    // int line_count;
+    int c = 0;
+    int temp_id;
+    int temp_arrival;
+    int temp_runtime;
+    int temp_priority;
+    
+    fp1 = fopen("processes.txt", "r");
+    fp2 = fopen("processes.txt", "r");
+    
+    if (fp1 == NULL || fp2 == NULL)
+    {
+        printf("No such file ... \n");
+        exit(EXIT_FAILURE);
+    }
+    
+    processes_count = count_lines(fp1);
+    // printf("Line Count: %d\n", line_count);
+    int ids[processes_count];
+    int arrivals[processes_count];
+    int runtimes[processes_count];
+    int priorities[processes_count];
+    
+    int** ret_arr = create_array(4, processes_count-1);
+    
+    
+    while ((read = getline(&line, &len, fp2)) != -1)
+    {
+        // printf("%s\n", line);
+        if (c == 0)
+        {
+            c++;
         }
         else
         {
-            #pragma region Process Generator logic
-            //////////////////////////////////////////////////////////////////
-            //Back to process Genrator
-            //////////////////////////////////////////////////////////////
-
-            /////// initialize clock
-            initClk();
-
-            int Current_time = getClk();
-
-            ////////////////////////////
-            // //  Send the information to the scheduler at the appropriate time.
-            // This is down by a messeage queue created by the process genrator
-
-            /////////////////////////////////////////////////////////////////////////
-            /// Generating a unquie Key for the queue
-            messageID = msgget(1, 0666 | IPC_CREAT); //create a message queue
-            key_t msgqid;
-            int send_val;
-            struct Gen_to_Sch message_processDate; //message to be sent from the Genrator
-                                                    //to the Scheduler
-            /////////////////////////////////////////////////////////////////////////
-            struct QNode *N; //pointer to the node to be sent
-            // The node contains a struct that carry info about the process
-            /////////////////////////////////////////////////////////////////////////
-            message_processDate.mtype = 1;               // can be ignored
-             // can be ignored
-            /////////////////////////////////////////////////////////////////////////
-            int Next_process_time;
-
-            while (processes_queue->front != NULL)
+            c++;
+            sscanf(line, "%d\t%d\t%d\t%d", &temp_id, &temp_arrival, &temp_runtime, &temp_priority);   
+        }
+        
+        // passing parameters to list stats
+        ids[c-2] = temp_id;
+        arrivals[c-2] = temp_arrival;
+        runtimes[c-2] = temp_runtime;
+        priorities[c-2] = temp_priority;
+    }
+    
+    // passing local arrays to return array 
+    // ret_arr = {ids, arrivals, runtimes, priorities};
+    for (int i = 0; i < processes_count-1; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            if (j == 0)
             {
-                #pragma region Sending process data via messaga IPC
-                /////////////////////////////////////////////////////////////////////////
-                //Calculating the sleep time of the process genrator
-                // geting the time of the next process to be sent form the queue of prceeses
-                // to the message queue
-                Next_process_time = processes_queue->front->key.arrivaltime;
-                Current_time = getClk(); // getting the time now
-                //The process genrator should sleep untill the arrival time of the process in turn
-                sleep(Next_process_time - Current_time);
-                /////////////////////////////////////////////////////////////////////////
-                 // extracting the front node from the queue
-                /////////////////////////////////////////////////////////////////////////
-                /// initializing the message
-                message_processDate.ProcessData.arrivaltime =processes_queue->front->key.arrivaltime;
-                message_processDate.ProcessData.id = processes_queue->front->key.id;
-                message_processDate.ProcessData.runningtime = processes_queue->front->key.runningtime;
-                message_processDate.ProcessData.priority =  processes_queue->front->key.priority;
-                message_processDate.ProcessData.pid = 0;
-                message_processDate.ProcessData.remainingTime =  processes_queue->front->key.runningtime;
-                message_processDate.ProcessData.waitingTime = 0;
-                /// Sending the message
-                deQueue(processes_queue);
-                int send_val = msgsnd(messageID, &message_processDate, sizeof(message_processDate.ProcessData), !IPC_NOWAIT);
-                if (send_val == -1)
-                    printf("Errror in send at %d", getClk());
-                else
-                {
-                    ///printf("message sent at %d\n ", getClk());
-                }
-                #pragma endregion
+                ret_arr[i][j] = ids[i];
+            }   
+            else if (j == 1)
+            {
+                ret_arr[i][j] = arrivals[i];
+            }   
+            else if (j == 2)
+            {
+                ret_arr[i][j] = runtimes[i];
             }
-            printf("Process genrator waiting\n");
+            else
+            {
+                ret_arr[i][j] = priorities[i];
+            }  
+            // printf("Data: %d  ",ret_arr[i][j]);  
+        }
+        // printf("\n");
+    }
+    
+    // closing file and  disposing pointers
+    if (line)
+    {
+        free(line);
+    }
+    // exit(EXIT_SUCCESS); /*can cause the function to return NULL, be careful */
+    
+    return ret_arr;
+}
+
+// function to send process 
+void send_process(int id, struct Queue prc_queue, key_t msgqid)
+{
+	int send_val;
+	
+	struct Data sentData = prc_queue.dataArray[id];
+	
+	send_val = msgsnd(msgqid1, &sentData, sizeof(sentData), !IPC_NOWAIT);
+
+	if (send_val == -1)
+	{
+		perror("Error in send ");
+	}
+	else
+	{
+		printf("Process Data Sent Successfully\n");
+	}
+}
+
+// function to read input processes and store them into a queue (working)
+struct Queue readProcessesInfo(struct Queue prc_queue, int** processes_info)
+{
+	struct Data processes_data;
+	printf("Beginning of ReadAndSendFunction ... \n");
+
+	
+	// read processes from Matrix
+	for (int i = 0; i < processes_count-2; i++)
+	{
+		for (int j = 0; j < 4; j++)
+		{
+			if (j == 0)
+			{
+				processes_data.id = processes_info[i][j];
+			}
+			else if (j == 1)
+			{
+				processes_data.arrival = processes_info[i][j];
+			}
+			else if (j == 2)
+			{
+				processes_data.runtime = processes_info[i][j];
+			}
+            else if(j == 3)
+            {
+                processes_data.priority = processes_info[i][j];
+            }
             
-            int status;
-            int pid_wait = wait(&status);
-            wait(&status);
-            printf("Process genrator stoped waiting\n");
-            // 7. Clear clock resources
-            destroyClk(true);
-            #pragma endregion
+			// insert(processes_queue, processes_data);  // not working
+		}
+		prc_queue.dataArray[prc_queue.rear] = processes_data;
+		prc_queue.rear++;
+		// printf("Inserted: %d\n", processes_data.runtime);
+	}
+	printf("Size of sent buffer: %d\n", size(prc_queue));
+	// (working) printf("Id: %d\tRuntime: %d\tArrival: %d\n", prc_queue.dataArray[prc_queue.front].id, prc_queue.dataArray[prc_queue.front].runtime, prc_queue.dataArray[prc_queue.front].arrival);
+	return prc_queue;
+}
+
+void initiate_scheduler(char choice[])
+{
+
+    char *s_argv[] = {"./scheduler.out", choice, 0};
+	execve(s_argv[0], &s_argv[0], NULL);
+}
+
+void initiate_RR_scheduler()
+{
+
+    char *s_argv[] = {"./scheduler.out", "-RR", 0};
+	execve(s_argv[0], &s_argv[0], NULL);
+}
+
+void initiate_SRTN_scheduler()
+{
+
+    char *s_argv[] = {"./scheduler.out", "-SRTN", 0};
+	execve(s_argv[0], &s_argv[0], NULL);
+}
+void initiate_clock()
+{
+    char *c_argv[] = {"./clk.out", 0};
+	execve(c_argv[0], &c_argv[0], NULL);
+}
+
+int main(int argc, char * argv[])
+{
+    signal(SIGINT, clearResources);
+    // TODO Initialization
+    FILE *fp;
+    ssize_t read;
+    size_t len;
+    pid_t ss_pid;
+    pid_t sc_pid;
+    char * line = NULL;
+    char ch[1];
+    char choice[8];
+    int** processes_info;
+    
+   //reading from file 
+    pid = getpid();
+	msgqid1 = msgget(16499, IPC_CREAT | 0644);
+    int line_count = 0;
+    fp = fopen("processes.txt", "r");
+    if (fp != NULL)
+    {
+        processes_count = count_lines(fp);
+        printf("line count: %d\n", processes_count);
+        processes_info = read_processes();
+        for (int i = 0; i < processes_count-1; i++)
+        {
+            for (int j = 0; j < 4; j++)
+            {
+                printf("%d  ", processes_info[i][j]);
+            }
+            printf("\n");
         }
     }
-    #pragma endregion
+    else
+    {
+        printf("No such file ... \n");
+    }
+
+    //choose the algorithm
+    printf("Choose scheduler from the list below: \n1. Non-preemptive Highest Priority First (HPF) \n2. Shortest Remaining time next (SRTN) \n3. Round Robin (RR) \nyour choice: ");
+    scanf("%s", (char *)ch);
+    if (strcmp(ch, "1") == 0)
+    {
+        strcpy(choice,"-HPF");
+        printf("HPF is selected \n");
+
+    }
+    else if (strcmp(ch, "2") == 0)
+    {
+        strcpy(choice,"-SRTN");
+        printf("SRTN is selected \n");
+
+    }
+    else if (strcmp(ch, "3") == 0)
+    {
+        strcpy(choice,"-RR");
+        printf("RR is selected \n");
+    }
+    // Scheduler
+    int sch_fork = fork();
+    if(sch_fork == -1)
+    {
+        perror("Error in initializing scheduler ..\n");
+    }
+    else if(sch_fork == 0)
+    {
+        sleep(3);
+        //intialtizing the scheduler with the right algorithm
+        initiate_scheduler(choice);
+    }
+    else{
+
+        //forking the clock
+        int clock_fork = fork();
+        if(clock_fork == -1)
+        {
+            perror("Error in initializing clock ..\n");
+        }
+        else if(clock_fork == 0){
+            initiate_clock();
+        }else{
+            sleep(1);
+            initClk();
+
+        //creating the message queue to send the data
+            struct Queue prc_queue;
+			initializeQueue(&prc_queue);
+			prc_queue = readProcessesInfo(prc_queue, processes_info);
+			int c = 0;
+			while (getClk() <= prc_queue.dataArray[prc_queue.rear-1].arrival)
+			{
+				if (getClk() == prc_queue.dataArray[c].arrival)
+				{
+					send_process(c, prc_queue, msgqid1);
+					c++;
+					sleep(1);
+				}
+			}
+
+            int sc_status;
+			sc_pid = wait(&sc_status);
+			if(!(sc_status & 0x00FF))
+				printf("\n CLOCK with pid %d terminated with exit code %d\n", sc_pid, sc_status>>8);
+        }
+        int ss_status;
+        ss_pid = wait(&ss_status);
+        if(!(ss_status & 0x00FF))
+        	printf("\n Scheduler with pid %d terminated with exit code %d\n", ss_pid, ss_status>>8);
+    } 
+	
+    destroyClk(true);
+    return 0;
 }
- 
-//SIGNINT handler
 void clearResources(int signum)
 {
-     destroyClk(true);
-    msgctl(messageID, IPC_RMID, NULL);
-    kill(pid,SIGINT);
-    kill(pid2,SIGINT);
-    destroyClk(true);
-    printf("Process genrator exits\n");
-    exit(0);
     //TODO Clears all resources in case of interruption
+    // handle kill signal
+    msgctl(msgqid1, IPC_RMID, (struct msqid_ds *) 0);
+   // msgctl(msgqid2, IPC_RMID, (struct msqid_ds *) 0);
+    printf(" Interruption detected ... ");
+    exit(0);
 }

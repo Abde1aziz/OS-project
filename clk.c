@@ -7,14 +7,13 @@
 
 #include "headers.h"
 
-int sharedMemoryID;
+int shmid;
 
 /* Clear the resources before exit */
 void cleanup(int signum)
 {
-    shmctl(sharedMemoryID, IPC_RMID, NULL);
+    shmctl(shmid, IPC_RMID, NULL);
     printf("Clock terminating!\n");
-    destroyClk(true);
     exit(0);
 }
 
@@ -25,13 +24,13 @@ int main(int argc, char * argv[])
     signal(SIGINT, cleanup);
     int clk = 0;
     //Create shared memory for one integer variable 4 bytes
-    sharedMemoryID = shmget(SHKEY, 4, IPC_CREAT | 0644);
-    if ((long)sharedMemoryID == -1)
+    shmid = shmget(SHKEY, 4, IPC_CREAT | 0644);
+    if ((long)shmid == -1)
     {
         perror("Error in creating shm!");
         exit(-1);
     }
-    int * shmaddr = (int *) shmat(sharedMemoryID, (void *)0, 0);
+    int * shmaddr = (int *) shmat(shmid, (void *)0, 0);
     if ((long)shmaddr == -1)
     {
         perror("Error in attaching the shm in clock!");
@@ -40,7 +39,6 @@ int main(int argc, char * argv[])
     *shmaddr = clk; /* initialize shared memory */
     while (1)
     {
-        printf("time elapsed %d \n", *shmaddr);
         sleep(1);
         (*shmaddr)++;
     }
