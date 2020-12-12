@@ -72,7 +72,7 @@ void  HPF() {
                     push(Q, recievedData);
                     kill(cpid, SIGSTOP);
                     printf("Process %d is in ready state\n", cpid);
-                    if(recievedData.priority > runningProcess.priority && !available && !firstIteration){
+                    if(recievedData.priority > runningProcess.priority && runningProcess.isRunning){
                         kill(runningProcess.pid, SIGSTOP);
                         runningProcess.isRunning = false;
                         push(Q, runningProcess);
